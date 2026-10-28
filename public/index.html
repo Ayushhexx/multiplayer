@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <title>GTA Vice City Multiplayer 3D</title>
+    <link rel="stylesheet" href="css/style.css?v=8">
+    <!-- Local & CDN Three.js -->
+    <script src="js/libs/three.min.js"></script>
+    <script>
+        if (typeof THREE === 'undefined') {
+            document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"><\/script>');
+        }
+    </script>
+    <!-- Post-processing and Shaders for Unreal Bloom -->
+    <script src="js/libs/EffectComposer.js"></script>
+    <script src="js/libs/CopyShader.js"></script>
+    <script src="js/libs/ShaderPass.js"></script>
+    <script src="js/libs/RenderPass.js"></script>
+    <script src="js/libs/LuminosityHighPassShader.js"></script>
+    <script src="js/libs/UnrealBloomPass.js"></script>
+    <!-- Procedural Texture Generator -->
+    <script src="js/engine/TextureGenerator.js"></script>
+</head>
+<body>
+    <div id="game-container"></div>
+
+    <!-- Fullscreen Red Damage Vignette -->
+    <div id="damage-vignette"></div>
+
+    <!-- Rain Overlay (CSS rain streaks during weather) -->
+    <div id="rain-overlay"></div>
+
+    <!-- Weather Status Indicator -->
+    <div id="weather-indicator">🌧️ RAIN</div>
+
+    <!-- Dynamic Crosshair & Reload Indicator -->
+    <div id="crosshair">
+        <div class="ch-dot"></div>
+        <div class="ch-tick ch-top"></div>
+        <div class="ch-tick ch-bottom"></div>
+        <div class="ch-tick ch-left"></div>
+        <div class="ch-tick ch-right"></div>
+        <div id="reloading-indicator">RELOADING...</div>
+    </div>
+
+    <!-- Top Center: Boss / VIP Health Bar -->
+    <div id="boss-health-panel" style="display: none;">
+        <div id="boss-name">DON RICARDO DIAZ</div>
+        <div id="boss-bar"><div id="boss-fill" style="width: 100%;"></div></div>
+    </div>
+
+    <!-- Vice City HUD Overlay -->
+    <div id="ui-overlay">
+        <!-- Top-Right: Classic Stats -->
+        <div id="stats-panel">
+            <div id="weapon-display">
+                <span id="weapon-icon">🔫</span>
+                <span id="weapon-name" style="display:none; font-size:11px; color:#aef; letter-spacing:1px; margin-right:4px;"></span>
+                <span id="ammo-counter">12 / ∞</span>
+                <button id="btn-reload-hud" class="btn-hud-reload" title="Click or Press [R] to Reload">⟳ RELOAD [R]</button>
+            </div>
+            <div id="vitals-row">
+                <div class="vital-box health">
+                    <span id="health-value">100</span>
+                    <div class="vital-bar">
+                        <div id="health-fill" class="vital-bar-fill" style="width: 100%;"></div>
+                    </div>
+                </div>
+                <div class="vital-box armor">
+                    <span id="armor-value">50</span>
+                    <div class="vital-bar">
+                        <div id="armor-fill" class="vital-bar-fill" style="width: 50%;"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Stamina Bar -->
+            <div class="vital-box stamina-box">
+                <div class="stamina-label">STAMINA <span id="stamina-value">100</span>%</div>
+                <div class="vital-bar">
+                    <div id="stamina-fill" class="vital-bar-fill" style="width: 100%; background: #06d6a0;"></div>
+                </div>
+            </div>
+
+            <!-- Level & XP Progression -->
+            <div id="progression-row">
+                <span id="player-level-badge">LVL 1</span>
+                <div id="xp-bar-container">
+                    <div id="xp-fill" style="width: 0%;"></div>
+                </div>
+                <span id="xp-text">0 / 1000 XP</span>
+            </div>
+
+            <div id="money-counter">$00005000</div>
+            <div id="wanted-stars">
+                <span class="wanted-star" id="star-1">★</span>
+                <span class="wanted-star" id="star-2">★</span>
+                <span class="wanted-star" id="star-3">★</span>
+                <span class="wanted-star" id="star-4">★</span>
+                <span class="wanted-star" id="star-5">★</span>
+            </div>
+        </div>
+
+        <!-- Radio Station Toast -->
+        <div id="radio-banner">
+            <span>📻</span>
+            <span id="radio-name">Wave 103 (Synthwave FM)</span>
+        </div>
+
+        <!-- Killfeed -->
+        <div id="killfeed"></div>
+
+        <!-- Context Prompt / Hints -->
+        <div id="action-hint">Press [F] to Drive Vehicle</div>
+
+        <!-- Chat Container -->
+        <div id="chat-container">
+            <div id="chat-messages">
+                <div class="chat-msg system">🌴 Welcome to Vice City Multiplayer! Press [T] to chat, [H] for controls, [Esc] for Pause Menu.</div>
+            </div>
+            <div id="chat-input-wrapper">
+                <input type="text" id="chat-input" placeholder="Type a message and press Enter..." maxlength="100">
+            </div>
+        </div>
+
+        <!-- Bottom-Left: Radar Minimap -->
+        <div id="radar-container">
+            <canvas id="radar-canvas" width="200" height="200"></canvas>
+            <div id="radar-bezel"></div>
+        </div>
+
+        <!-- Location Name Tag below Minimap -->
+        <div id="hud-location-tag">📍 OCEAN DRIVE BOULEVARD</div>
+
+        <!-- On-Screen World Map Quick Button -->
+        <button id="btn-map-hud" title="Open World Map [M]">🗺️ MAP</button>
+
+        <!-- Game Clock (above minimap) -->
+        <div id="game-clock">12:00 PM</div>
+
+        <!-- Compass Widget (right of minimap) -->
+        <div id="compass-widget">
+            <div id="compass-rose">
+                <div id="compass-arrow">▲</div>
+            </div>
+            <div id="compass-dir">N</div>
+        </div>
+
+        <!-- Bottom-Right: Vehicle Speedometer -->
+        <div id="speedometer-panel">
+            <div id="speed-number">0</div>
+            <div id="speed-unit">MPH</div>
+            <div id="gear-display">GEAR 1 • [R] RADIO • [H] HORN</div>
+        </div>
+    </div>
+
+    <!-- Start / Main Menu Modal -->
+    <div id="join-modal">
+        <div class="modal-content">
+            <div class="logo-container">
+                <div class="logo-gta">GRAND THEFT AUTO</div>
+                <div class="logo-vice">Vice City</div>
+                <div class="logo-mp">MULTIPLAYER 3D</div>
+            </div>
+
+            <div class="input-group">
+                <label for="player-name-input">NICKNAME</label>
+                <input type="text" id="player-name-input" value="Tommy_Vercetti" maxlength="16">
+            </div>
+
+            <div class="input-group">
+                <label>CHOOSE OUTFIT</label>
+                <div class="outfit-grid">
+                    <div class="outfit-card selected" data-outfit="hawaiian_cyan">
+                        <div class="outfit-preview" style="background: #00f0ff;"></div>
+                        <div class="outfit-title">Tommy Cyan</div>
+                    </div>
+                    <div class="outfit-card" data-outfit="hawaiian_pink">
+                        <div class="outfit-preview" style="background: #ff2a85;"></div>
+                        <div class="outfit-title">Vice Pink</div>
+                    </div>
+                    <div class="outfit-card" data-outfit="white_suit">
+                        <div class="outfit-preview" style="background: #f8f9fa;"></div>
+                        <div class="outfit-title">Lance White</div>
+                    </div>
+                    <div class="outfit-card" data-outfit="black_suit">
+                        <div class="outfit-preview" style="background: #212529;"></div>
+                        <div class="outfit-title">Sonny Suit</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="menu-btn-group">
+                <button id="btn-enter-game" class="btn-start">NEW GAME</button>
+                <button id="btn-continue-game" class="btn-start" style="background: #7209b7; display: none;">CONTINUE GAME</button>
+                <div class="menu-sub-row">
+                    <button id="btn-menu-settings" class="btn-sub">SETTINGS</button>
+                    <button id="btn-menu-controls" class="btn-sub">CONTROLS</button>
+                </div>
+            </div>
+
+            <!-- LAN Multiplayer URL for PC & Mobile Cross-play -->
+            <div id="lan-multiplayer-badge" class="lan-badge" title="Connect other devices on your Wi-Fi">
+                <span class="lan-icon">📱</span>
+                <span class="lan-text">PC & Mobile Crossplay: <strong id="lan-url-display">http://localhost:8000</strong></span>
+            </div>
+        </div>
+    </div>
+
+    <!-- In-Game Pause Menu Modal (Triggered by ESC) -->
+    <div id="pause-modal" class="game-modal" style="display: none;">
+        <div class="modal-content pause-content">
+            <h2 class="menu-title">GAME PAUSED</h2>
+            <button id="btn-resume-game" class="menu-btn">RESUME</button>
+            <button id="btn-restart-mission" class="menu-btn">RESTART ACTIVE MISSION</button>
+            <button id="btn-pause-settings" class="menu-btn">SETTINGS</button>
+            <button id="btn-save-game" class="menu-btn">SAVE GAME</button>
+            <button id="btn-pause-help" class="menu-btn">CONTROLS</button>
+            <div class="lan-badge" style="margin-bottom: 12px;">
+                <span>📱 Join on Phone: <strong id="lan-pause-display">http://localhost:8000</strong></span>
+            </div>
+            <button id="btn-exit-mainmenu" class="menu-btn btn-danger">RETURN TO MAIN MENU</button>
+        </div>
+    </div>
+
+    <!-- Settings Modal -->
+    <div id="settings-modal" class="game-modal" style="display: none;">
+        <div class="modal-content settings-content">
+            <h2 class="menu-title">SETTINGS</h2>
+            <div class="setting-row">
+                <label for="setting-sens">Mouse Sensitivity</label>
+                <input type="range" id="setting-sens" min="0.001" max="0.006" step="0.0005" value="0.0022">
+            </div>
+            <div class="setting-row">
+                <label for="setting-fov">Field of View (FOV)</label>
+                <input type="range" id="setting-fov" min="60" max="95" step="1" value="72">
+            </div>
+            <div class="setting-row">
+                <label for="setting-inverty">Invert Y-Axis</label>
+                <input type="checkbox" id="setting-inverty">
+            </div>
+            <div class="setting-row">
+                <label for="setting-vol">Master Volume</label>
+                <input type="range" id="setting-vol" min="0" max="1" step="0.05" value="0.8">
+            </div>
+            <div class="setting-row">
+                <label for="setting-graphics">Graphics Quality</label>
+                <select id="setting-graphics">
+                    <option value="high">High (Unreal Bloom & Shadows)</option>
+                    <option value="medium">Medium</option>
+                    <option value="low">Low (Performance Mode)</option>
+                </select>
+            </div>
+            <button id="btn-close-settings" class="btn-start" style="margin-top: 15px;">APPLY & CLOSE</button>
+        </div>
+    </div>
+
+    <!-- Help / Controls Modal -->
+    <div id="help-modal">
+        <h2 style="color: #ff2a85; margin-bottom: 15px; font-family: 'Permanent Marker', cursive;">CONTROLS</h2>
+        <div class="help-row"><span>Move</span> <span class="help-key">W / A / S / D</span></div>
+        <div class="help-row"><span>Look / Aim</span> <span class="help-key">Mouse</span></div>
+        <div class="help-row"><span>Sprint</span> <span class="help-key">Left Shift</span></div>
+        <div class="help-row"><span>Crouch</span> <span class="help-key">C or Ctrl</span></div>
+        <div class="help-row"><span>Jump / Brake</span> <span class="help-key">Space</span></div>
+        <div class="help-row"><span>Interact / Pay 'n' Spray</span> <span class="help-key">E</span></div>
+        <div class="help-row"><span>Enter / Exit Vehicle</span> <span class="help-key">F or Enter</span></div>
+        <div class="help-row"><span>Shoot / Punch</span> <span class="help-key">Left Click</span></div>
+        <div class="help-row"><span>Bike Drive-By Fire</span> <span class="help-key">Left Click on Bike</span></div>
+        <div class="help-row"><span>Aim Crosshair</span> <span class="help-key">Right Click</span></div>
+        <div class="help-row"><span>Reload Weapon</span> <span class="help-key">R (Unlimited Ammo!)</span></div>
+        <div class="help-row"><span>Escape Police (Cheat)</span> <span class="help-key">Type "escapepolice"</span></div>
+        <div class="help-row"><span>Weapon Slots</span> <span class="help-key">1=Pistol, 2=SMG, 3=Shotgun, 4=Rifle, 5=RPG, 0=Fists</span></div>
+        <div class="help-row"><span>Vehicle Radio</span> <span class="help-key">R</span></div>
+        <div class="help-row"><span>Car Horn</span> <span class="help-key">H</span></div>
+        <div class="help-row"><span>Pause Menu</span> <span class="help-key">Esc</span></div>
+        <div class="help-row"><span>Chat</span> <span class="help-key">T</span></div>
+        <div class="help-row"><span>Black Market Shop</span> <span class="help-key">B</span></div>
+        <div class="help-row"><span>World Map & GPS</span> <span class="help-key">M</span></div>
+        <div class="help-row"><span>Show Weapon Name</span> <span class="help-key">G</span></div>
+        <button id="btn-close-help" class="btn-start" style="margin-top: 15px; padding: 10px; font-size: 15px;">BACK TO GAME</button>
+    </div>
+
+    <!-- Full Interactive World Map Modal -->
+    <div id="world-map-modal" class="game-modal" style="display: none;">
+        <div class="world-map-wrapper">
+            <div class="map-modal-header">
+                <div class="map-header-left">
+                    <span class="map-brand-title">🗺️ VICE CITY WORLD MAP</span>
+                    <span id="map-location-title" class="map-location-badge">📍 OCEAN DRIVE BOULEVARD</span>
+                </div>
+                <div class="map-header-right">
+                    <span id="map-coords-display" class="map-stat-pill">GPS: X: 0 | Z: 0</span>
+                    <span id="map-heading-display" class="map-stat-pill">000° N</span>
+                    <button id="btn-close-map" class="map-close-btn" title="Close Map [M]">✕</button>
+                </div>
+            </div>
+
+            <div class="map-canvas-container">
+                <canvas id="world-map-canvas" width="940" height="580"></canvas>
+            </div>
+
+            <div class="map-modal-footer">
+                <div class="map-legend">
+                    <span class="legend-item"><span class="legend-dot dot-player">▲</span> Tommy (You)</span>
+                    <span class="legend-item"><span class="legend-dot dot-vehicle">■</span> Vehicles</span>
+                    <span class="legend-item"><span class="legend-dot dot-player-remote">●</span> Players</span>
+                    <span class="legend-item"><span class="legend-dot dot-waypoint">★</span> Mission</span>
+                    <span class="legend-item"><span class="legend-dot dot-stunt">◆</span> Stunt Ramps</span>
+                    <span class="legend-item"><span class="legend-dot dot-mountain">▲</span> Mt. Apex</span>
+                </div>
+                <div class="map-footer-btns">
+                    <button id="btn-map-center" class="map-action-btn">CENTER ON ME</button>
+                    <button id="btn-map-zoom-in" class="map-action-btn">ZOOM +</button>
+                    <button id="btn-map-zoom-out" class="map-action-btn">ZOOM −</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Mobile Portrait Orientation Prompt Overlay -->
+    <div id="mobile-rotate-overlay" style="display: none;">
+        <div class="rotate-card">
+            <div class="rotate-phone-anim">
+                <svg class="phone-svg" viewBox="0 0 100 100" width="76" height="76">
+                    <rect x="25" y="10" width="50" height="80" rx="8" fill="none" stroke="#00f0ff" stroke-width="4" />
+                    <circle cx="50" cy="82" r="3" fill="#00f0ff" />
+                    <line x1="40" y1="18" x2="60" y2="18" stroke="#00f0ff" stroke-width="3" stroke-linecap="round" />
+                    <path d="M 82 38 A 36 36 0 0 1 50 86" fill="none" stroke="#ff007f" stroke-width="4" stroke-dasharray="6,4" />
+                    <polygon points="50,92 42,82 58,82" fill="#ff007f" />
+                </svg>
+            </div>
+            <h2 class="rotate-title">ROTATE DEVICE</h2>
+            <p class="rotate-desc">GTA Vice City is best experienced in Landscape Mode for high-definition 3D graphics and full driving controls.</p>
+            <div class="rotate-actions">
+                <button id="btn-request-rotate" class="rotate-btn-primary">⛶ ENTER LANDSCAPE FULLSCREEN</button>
+                <button id="btn-dismiss-rotate" class="rotate-btn-secondary">CONTINUE IN PORTRAIT</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Mobile Touch Controls (Authentic GTA Vice City Mobile Layout) -->
+    <div id="mobile-controls" style="display: none;">
+        <!-- Left Thumb: Virtual Movement & Steering Joystick -->
+        <div id="touch-joystick-zone">
+            <div id="touch-joystick-base">
+                <div id="touch-joystick-knob"></div>
+            </div>
+        </div>
+
+        <!-- Right Screen Half: Free Touch Camera Aim Drag -->
+        <div id="touch-look-zone"></div>
+
+        <!-- On-Foot Action Cluster -->
+        <div id="mobile-onfoot-controls" class="touch-cluster">
+            <button class="touch-btn btn-fire-large" id="tbtn-fire" title="Attack / Shoot">
+                <span class="tbtn-icon">🎯</span>
+                <span class="tbtn-label">ATTACK</span>
+            </button>
+            <button class="touch-btn btn-action" id="tbtn-sprint" title="Sprint">
+                <span class="tbtn-icon">🏃</span>
+                <span class="tbtn-label">SPRINT</span>
+            </button>
+            <button class="touch-btn btn-action" id="tbtn-jump" title="Jump">
+                <span class="tbtn-icon">🦘</span>
+                <span class="tbtn-label">JUMP</span>
+            </button>
+            <button class="touch-btn btn-vehicle-enter" id="tbtn-enter" title="Enter Vehicle / Carjack">
+                <span class="tbtn-icon">🚗</span>
+                <span class="tbtn-label">ENTER</span>
+            </button>
+            <button class="touch-btn btn-sub-action" id="tbtn-reload" title="Reload [R]">
+                <span class="tbtn-icon">🔄</span>
+                <span class="tbtn-label">RELOAD</span>
+            </button>
+            <button class="touch-btn btn-sub-action" id="tbtn-weapon" title="Switch Weapon">
+                <span class="tbtn-icon">🔫</span>
+                <span class="tbtn-label">GUN</span>
+            </button>
+            <button class="touch-btn btn-sub-action" id="tbtn-crouch" title="Crouch">
+                <span class="tbtn-icon">🧎</span>
+                <span class="tbtn-label">CROUCH</span>
+            </button>
+            <button class="touch-btn btn-cheat" id="tbtn-cheat" title="Clear Police">
+                <span class="tbtn-icon">⭐</span>
+                <span class="tbtn-label">POLICE</span>
+            </button>
+            <button class="touch-btn btn-map" id="tbtn-map" title="World Map [M]">
+                <span class="tbtn-icon">🗺️</span>
+                <span class="tbtn-label">MAP</span>
+            </button>
+        </div>
+
+        <!-- In-Vehicle Driving Cluster (Authentic GTA Vice City Mobile Pedals) -->
+        <div id="mobile-vehicle-controls" class="touch-cluster" style="display: none;">
+            <button class="touch-btn btn-pedal-gas" id="tbtn-v-gas" title="Accelerate / Gas">
+                <span class="tbtn-icon">▲</span>
+                <span class="tbtn-label">GAS</span>
+            </button>
+            <button class="touch-btn btn-pedal-brake" id="tbtn-v-reverse" title="Brake / Reverse">
+                <span class="tbtn-icon">▼</span>
+                <span class="tbtn-label">BRAKE</span>
+            </button>
+            <button class="touch-btn btn-handbrake" id="tbtn-v-handbrake" title="Handbrake / Drift">
+                <span class="tbtn-icon">🅿</span>
+                <span class="tbtn-label">DRIFT</span>
+            </button>
+            <button class="touch-btn btn-vehicle-exit" id="tbtn-v-exit" title="Exit Vehicle">
+                <span class="tbtn-icon">🚪</span>
+                <span class="tbtn-label">EXIT</span>
+            </button>
+            <button class="touch-btn btn-horn" id="tbtn-v-horn" title="Horn / Siren">
+                <span class="tbtn-icon">📢</span>
+                <span class="tbtn-label">HORN</span>
+            </button>
+            <button class="touch-btn btn-driveby" id="tbtn-v-fire" title="Drive-by Shoot">
+                <span class="tbtn-icon">🎯</span>
+                <span class="tbtn-label">FIRE</span>
+            </button>
+            <button class="touch-btn btn-cheat" id="tbtn-v-cheat" title="Clear Police">
+                <span class="tbtn-icon">⭐</span>
+                <span class="tbtn-label">POLICE</span>
+            </button>
+            <button class="touch-btn btn-map" id="tbtn-v-map" title="World Map [M]">
+                <span class="tbtn-icon">🗺️</span>
+                <span class="tbtn-label">MAP</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- Wasted Screen -->
+    <div id="wasted-screen">
+        <div class="wasted-text">WASTED</div>
+    </div>
+
+    <!-- Game Scripts In Dependency Order -->
+    <script src="js/engine/AudioSystem.js?v=7"></script>
+    <script src="js/engine/SaveManager.js?v=7"></script>
+    <script src="js/engine/Renderer.js?v=7"></script>
+    <script src="js/engine/World.js?v=7"></script>
+    <script src="js/entities/CharacterModel.js?v=7"></script>
+    <script src="js/weapons/WeaponSystem.js?v=7"></script>
+    <script src="js/entities/Vehicle.js?v=7"></script>
+    <script src="js/entities/PickupManager.js?v=7"></script>
+    <script src="js/entities/EnemyManager.js?v=7"></script>
+    <script src="js/entities/TrafficManager.js?v=7"></script>
+    <script src="js/entities/PoliceManager.js?v=7"></script>
+    <script src="js/entities/DinoManager.js?v=7"></script>
+    <script src="js/entities/AnimalManager.js?v=7"></script>
+    <script src="js/engine/MissionSystem.js?v=7"></script>
+    <script src="js/entities/RemotePlayer.js?v=7"></script>
+    <script src="js/entities/Player.js?v=7"></script>
+    <script src="js/network/Network.js?v=7"></script>
+    <script src="js/ui/HUD.js?v=7"></script>
+    <script src="js/main.js?v=7"></script>
+</body>
+</html>
